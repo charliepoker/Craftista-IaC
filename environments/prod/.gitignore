@@ -1,0 +1,23 @@
+# Terraform State Files
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+errored.tfstate
+
+# Terraform Directories
+.terraform/
+.terraform.lock.hcl
+
+# Variable Files (contain sensitive data)
+*.tfvars
+*.auto.tfvars
+terraform.tfvars
+
+# Plan Files
+*.tfplan
+*.plan
+
+# Documentation (work in progress)
+VAULT_SETUP.md
+VAULT_TERRAFORM_INTEGRATION.md
+NETWORK_HARDENING.md

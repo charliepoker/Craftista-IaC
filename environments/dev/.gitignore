@@ -1,0 +1,222 @@
+# Terraform .gitignore for Development Environment
+
+#######################################
+# Terraform State Files
+#######################################
+# Local state files (when not using remote backend)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+#######################################
+# Terraform Directories
+#######################################
+# .terraform directory contains providers and modules
+.terraform/
+.terraform.lock.hcl
+
+#######################################
+# Terraform Variables Files
+#######################################
+# Ignore tfvars files that may contain sensitive data
+*.tfvars
+*.tfvars.json
+
+# Exception: Keep example files for documentation
+!*.tfvars.example
+!example.tfvars
+
+# Auto-generated variable files
+*.auto.tfvars
+*.auto.tfvars.json
+
+#######################################
+# Terraform Plans
+#######################################
+# Plan output files
+*.tfplan
+*.tfplan.json
+tfplan
+plan.out
+plan.json
+
+#######################################
+# Sensitive Files
+#######################################
+# Override files (local customizations)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Secrets and credentials
+*secret*
+*password*
+*credentials*
+secrets.tf
+credentials.tf
+
+# AWS credentials
+.aws/
+aws-credentials
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+*.pub
+
+#######################################
+# Environment Files
+#######################################
+.env
+.env.*
+!.env.example
+
+#######################################
+# IDE and Editor Files
+#######################################
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs (IntelliJ, PyCharm, etc.)
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+*~
+.*.sw[a-p]
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+#######################################
+# OS Files
+#######################################
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+#######################################
+# Backup Files
+#######################################
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+
+#######################################
+# Log Files
+#######################################
+*.log
+logs/
+terraform.log
+
+#######################################
+# Testing and Temporary Files
+#######################################
+test/
+tmp/
+temp/
+.test/
+*.test
+
+#######################################
+# Documentation Build Files
+#######################################
+.terraform-docs.yml
+terraform-docs/
+
+#######################################
+# Terraform Plugin Cache
+#######################################
+.terraform.d/
+plugin-cache/
+
+#######################################
+# Terragrunt Files
+#######################################
+.terragrunt-cache/
+terragrunt-debug.tfvars.json
+
+#######################################
+# Sentinel Policy Files (if using)
+#######################################
+.sentinel/
+
+#######################################
+# Module Development
+#######################################
+# Ignore generated files
+.terraform-version
+.tflint.hcl
+.tfsec/
+
+#######################################
+# CI/CD Generated Files
+#######################################
+.gitlab-ci-local/
+.github-actions-local/
+
+#######################################
+# Compliance and Security Scan Results
+#######################################
+checkov-report.json
+tfsec-report.json
+terrascan-report.json
+compliance-reports/
+
+#######################################
+# Cost Estimation Files
+#######################################
+infracost-report.json
+cost-estimate.json
+
+#######################################
+# Lock Files (Optional - uncomment if needed)
+#######################################
+# Some teams prefer to ignore lock files for flexibility
+# Uncomment if you want to regenerate lock files per environment
+# .terraform.lock.hcl
+
+#######################################
+# Documentation
+#######################################
+# Auto-generated docs
+docs/generated/
+*md
+*.md.backup
