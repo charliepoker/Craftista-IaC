@@ -637,7 +637,7 @@ TOTAL:                    ~$230
 
 ```
 EKS Control Plane:        $73
-EC2 Nodes (2x t3.small):  $30
+EC2 Nodes (2x t3.medium):  $30
 NAT Gateway (3 AZs):      $96
 RDS Multi-AZ (small):     $52
 Redis Multi-AZ:           $48
