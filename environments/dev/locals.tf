@@ -1,3 +1,8 @@
+# Fetch caller public IP for security group whitelisting
+data "http" "user_ip" {
+  url = "https://checkip.amazonaws.com/"
+}
+
 # Local values for reuse across resources
 locals {
   user_ip = replace(chomp(data.http.user_ip.response_body), "\r", "")
