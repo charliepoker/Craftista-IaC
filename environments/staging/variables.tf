@@ -475,3 +475,37 @@ variable "docdb_deletion_protection" {
   type        = bool
   default     = false
 }
+
+#######################################
+# DevOps Tools Variables
+#######################################
+
+variable "key_name" {
+  description = "EC2 Key Pair name for SSH access to DevOps tools"
+  type        = string
+  default     = "craftista-staging-key"
+}
+
+variable "sonarqube_instance_type" {
+  description = "Instance type for SonarQube"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "nexus_instance_type" {
+  description = "Instance type for Nexus"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "sonarqube_data_volume_size" {
+  description = "Size of SonarQube data volume in GB"
+  type        = number
+  default     = 50
+}
+
+variable "nexus_data_volume_size" {
+  description = "Size of Nexus data volume in GB"
+  type        = number
+  default     = 100
+}
