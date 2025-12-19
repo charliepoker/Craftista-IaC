@@ -196,7 +196,6 @@ module "sonarqube_instance" {
 
   instance_type               = var.sonarqube_instance_type
   ami                         = data.aws_ami.amazon_linux.id
-  key_name                    = var.key_name
   monitoring                  = true
   vpc_security_group_ids      = [module.sonarqube_sg.security_group_id]
   subnet_id                   = module.vpc.private_subnets[0] # Private subnet for security
@@ -245,7 +244,6 @@ module "nexus_instance" {
 
   instance_type               = var.nexus_instance_type
   ami                         = data.aws_ami.amazon_linux.id
-  key_name                    = var.key_name
   monitoring                  = true
   vpc_security_group_ids      = [module.nexus_sg.security_group_id]
   subnet_id                   = module.vpc.private_subnets[0] # Private subnet for security
