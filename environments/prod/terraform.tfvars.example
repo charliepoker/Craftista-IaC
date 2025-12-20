@@ -1,0 +1,110 @@
+# Production Environment - Example Terraform Variables
+# Copy this file to terraform.tfvars and customize the values
+# Note: terraform.tfvars is gitignored to prevent sensitive data from being committed
+
+#######################################
+# Project Configuration
+#######################################
+project_name = "craftista"
+environment  = "prod"
+aws_region   = "us-east-1"
+owner_email  = "your-email@example.com"
+
+#######################################
+# Network Configuration
+#######################################
+vpc_cidr                = "10.0.0.0/16"
+availability_zones      = ["us-east-1a", "us-east-1b", "us-east-1c"]
+private_subnet_cidrs    = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+public_subnet_cidrs     = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+database_subnet_cidrs   = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
+enable_vpc_flow_logs    = true
+enable_ecr_endpoints    = false # Set to true if using Amazon ECR for container images
+
+# Additional CIDRs for restricted access (e.g., office VPN, CI/CD systems)
+# GitHub Actions authenticate via OIDC/IRSA, not IP-based whitelisting
+additional_allowed_cidrs = []
+# Example: ["203.0.113.0/24"] # Corporate VPN CIDR
+
+#######################################
+# EKS Configuration
+#######################################
+kubernetes_version = "1.30"
+enable_irsa        = true # Enable IAM Roles for Service Accounts
+enable_ssm         = true # Enable Systems Manager for secure node access
+
+# Production uses ON_DEMAND instances for stability
+node_groups = {
+  main = {
+    instance_types = ["t3.medium"]
+    min_size       = 2
+    max_size       = 4
+    desired_size   = 2
+    capacity_type  = "ON_DEMAND" # Use ON_DEMAND for production stability
+    disk_size      = 50
+    taints         = []
+  }
+}
+
+#######################################
+# Monitoring Configuration
+#######################################
+enable_container_insights = true # Enable CloudWatch Container Insights for production monitoring
+alarm_sns_topic_arn       = ""   # REQUIRED: SNS topic ARN for CloudWatch alarms in production
+
+#######################################
+# RDS PostgreSQL Configuration
+#######################################
+rds_instance_class          = "db.t4g.micro" # Consider db.t4g.small or larger for production workloads
+rds_allocated_storage       = 20
+rds_max_allocated_storage   = 100
+rds_engine_version          = "16.3"
+rds_database_name           = "craftista"
+rds_master_username         = "craftista_admin"
+rds_multi_az                = true # Multi-AZ for high availability in production
+rds_backup_retention_period = 7    # 7-day backup retention
+rds_skip_final_snapshot     = false # Keep final snapshot on deletion
+rds_deletion_protection     = true # Prevent accidental deletion
+rds_performance_insights_enabled = true
+rds_monitoring_interval     = 60 # Enhanced monitoring interval
+
+#######################################
+# ElastiCache Redis Configuration
+#######################################
+redis_engine_version             = "7.1"
+redis_node_type                  = "cache.t3.micro" # Consider cache.t3.small or larger for production
+redis_num_cache_clusters         = 2                # Multi-node for high availability
+redis_automatic_failover_enabled = true             # Enable automatic failover
+redis_at_rest_encryption_enabled = true
+redis_transit_encryption_enabled = true
+redis_snapshot_retention_limit   = 5
+
+#######################################
+# DocumentDB (MongoDB-compatible) Configuration
+#######################################
+docdb_instance_class            = "db.t3.medium" # Consider db.r6g.large or larger for production
+docdb_instance_count            = 2              # Multiple instances for high availability
+docdb_engine_version            = "5.0.0"
+docdb_master_username           = "craftista_admin"
+docdb_backup_retention_period   = 7
+docdb_skip_final_snapshot       = false # Keep final snapshot on deletion
+docdb_deletion_protection       = true # Prevent accidental deletion
+docdb_preferred_backup_window   = "03:00-04:00"
+docdb_preferred_maintenance_window = "mon:04:00-mon:05:00"
+
+#######################################
+# DevOps Tools Configuration
+# Note: SSH key pairs are no longer needed - SSM Session Manager is configured
+#######################################
+sonarqube_instance_type    = "t3.large"
+nexus_instance_type        = "t3.large"
+sonarqube_data_volume_size = 100
+nexus_data_volume_size     = 200
+
+#######################################
+# Backup Configuration
+#######################################
+enable_automated_backups = false # Consider enabling for production workloads
+backup_retention_days    = 7
+
+

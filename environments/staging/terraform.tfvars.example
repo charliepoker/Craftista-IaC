@@ -1,0 +1,110 @@
+# Staging Environment - Example Terraform Variables
+# Copy this file to terraform.tfvars and customize the values
+# Note: terraform.tfvars is gitignored to prevent sensitive data from being committed
+
+#######################################
+# Project Configuration
+#######################################
+project_name = "craftista"
+environment  = "staging"
+aws_region   = "us-east-1"
+owner_email  = "your-email@example.com"
+
+#######################################
+# Network Configuration
+#######################################
+vpc_cidr                = "10.2.0.0/16"
+availability_zones      = ["us-east-1a", "us-east-1b", "us-east-1c"]
+private_subnet_cidrs    = ["10.2.10.0/24", "10.2.20.0/24", "10.2.30.0/24"]
+public_subnet_cidrs     = ["10.2.1.0/24", "10.2.2.0/24", "10.2.3.0/24"]
+database_subnet_cidrs   = ["10.2.101.0/24", "10.2.102.0/24", "10.2.103.0/24"]
+enable_vpc_flow_logs    = true
+enable_ecr_endpoints    = false # Set to true if using Amazon ECR for container images
+
+# Additional CIDRs for restricted access (e.g., office VPN, CI/CD systems)
+additional_allowed_cidrs = []
+# Example: ["203.0.113.0/24"] # Corporate VPN CIDR
+
+#######################################
+# EKS Configuration
+#######################################
+kubernetes_version = "1.30"
+enable_irsa        = true # Enable IAM Roles for Service Accounts
+enable_ssm         = true # Enable Systems Manager for secure node access
+
+# Staging uses production-like setup but with smaller resources
+node_groups = {
+  main = {
+    instance_types = ["t3.small"]
+    min_size       = 1
+    max_size       = 2
+    desired_size   = 1
+    capacity_type  = "SPOT" # Use SPOT for cost savings, change to ON_DEMAND for stability testing
+    disk_size      = 20
+    taints         = []
+  }
+}
+
+#######################################
+# Monitoring Configuration
+#######################################
+enable_container_insights = false # Set to true to enable CloudWatch Container Insights
+sns_topic_arn             = ""    # Optional: SNS topic ARN for CloudWatch alarms
+
+#######################################
+# RDS PostgreSQL Configuration
+#######################################
+rds_instance_class          = "db.t4g.micro"
+rds_allocated_storage       = 50
+rds_max_allocated_storage   = 100
+rds_engine_version          = "16.3"
+rds_database_name           = "craftista"
+rds_master_username         = "craftista_admin"
+rds_multi_az                = false # Set to true for high availability testing
+rds_backup_retention_period = 3
+rds_skip_final_snapshot     = true # Set to false to keep final snapshot
+rds_deletion_protection     = false # Set to true to prevent accidental deletion
+
+#######################################
+# ElastiCache Redis Configuration
+#######################################
+redis_engine_version             = "7.1"
+redis_node_type                  = "cache.t3.micro"
+redis_num_cache_clusters         = 1 # Single node for staging
+redis_automatic_failover_enabled = false
+redis_at_rest_encryption_enabled = true
+redis_transit_encryption_enabled = true
+
+#######################################
+# DocumentDB (MongoDB-compatible) Configuration
+#######################################
+docdb_instance_class            = "db.t3.medium"
+docdb_instance_count            = 1 # Single instance for staging
+docdb_engine_version            = "5.0.0"
+docdb_master_username           = "craftista_admin"
+docdb_backup_retention_period   = 1
+docdb_skip_final_snapshot       = true # Set to false to keep final snapshot
+docdb_deletion_protection       = false # Set to true to prevent accidental deletion
+docdb_preferred_backup_window   = "03:00-04:00"
+docdb_preferred_maintenance_window = "mon:04:00-mon:05:00"
+
+#######################################
+# DevOps Tools Configuration
+# Note: SSH key pairs are no longer needed - SSM Session Manager is configured
+#######################################
+sonarqube_instance_type    = "t3.medium"
+nexus_instance_type        = "t3.medium"
+sonarqube_data_volume_size = 50
+nexus_data_volume_size     = 100
+
+#######################################
+# Backup Configuration
+#######################################
+enable_automated_backups = true
+backup_retention_days    = 3
+
+#######################################
+# Cost Management
+#######################################
+budget_amount = 50 # $50/month budget alert for staging environment
+budget_email  = "your-email@example.com"
