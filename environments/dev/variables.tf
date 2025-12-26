@@ -61,11 +61,11 @@ variable "kubernetes_version" {
 variable "node_groups" {
   description = "EKS node groups configuration"
   type = map(object({
-    desired_size    = number
-    min_size        = number
-    max_size        = number
-    instance_types  = list(string)
-    capacity_type   = string
+    desired_size   = number
+    min_size       = number
+    max_size       = number
+    instance_types = list(string)
+    capacity_type  = string
   }))
   default = {
     general = {
@@ -154,7 +154,7 @@ variable "docdb_engine_version" {
 variable "docdb_instance_class" {
   description = "DocumentDB instance class"
   type        = string
-  default     = "db.t3.small"
+  default     = "db.t3.medium"
 }
 
 variable "docdb_num_instances" {

@@ -91,3 +91,40 @@ output "devops_tools_access" {
     nexus_docker_internal = "http://${module.nexus_instance.private_ip}:8082"
   }
 }
+
+#######################################
+# Database Outputs
+#######################################
+
+output "rds_endpoint" {
+  description = "RDS PostgreSQL endpoint"
+  value       = aws_db_instance.postgres.endpoint
+}
+
+output "redis_primary_endpoint" {
+  description = "Redis primary endpoint address"
+  value       = aws_elasticache_replication_group.redis.primary_endpoint_address
+}
+
+output "docdb_cluster_endpoint" {
+  description = "DocumentDB cluster endpoint"
+  value       = aws_docdb_cluster.main.endpoint
+}
+
+output "rds_master_password" {
+  description = "RDS master password"
+  value       = aws_db_instance.postgres.password
+  sensitive   = true
+}
+
+output "redis_auth_token" {
+  description = "Redis auth token"
+  value       = aws_elasticache_replication_group.redis.auth_token
+  sensitive   = true
+}
+
+output "docdb_master_password" {
+  description = "DocumentDB master password"
+  value       = aws_docdb_cluster.main.master_password
+  sensitive   = true
+}

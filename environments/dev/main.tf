@@ -413,3 +413,173 @@ resource "aws_security_group" "devops_alb" {
     Service     = "devops-alb"
   }
 }
+
+#######################################
+# Databases (Dev)
+#######################################
+
+# Shared security group for DB access from within the VPC
+resource "aws_security_group" "database" {
+  name        = "${var.project_name}-${var.environment}-database-sg"
+  description = "Security group for databases (PostgreSQL, Redis, DocumentDB)"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description = "PostgreSQL"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr_block]
+  }
+
+  ingress {
+    description = "Redis"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr_block]
+  }
+
+  ingress {
+    description = "DocumentDB"
+    from_port   = 27017
+    to_port     = 27017
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Service     = "database"
+  }
+}
+
+# RDS PostgreSQL (single-AZ, cost-optimized)
+resource "aws_db_instance" "postgres" {
+  identifier     = "${var.project_name}-${var.environment}-postgres"
+  engine         = "postgres"
+  engine_version = var.rds_engine_version
+
+  instance_class    = var.rds_instance_class
+  allocated_storage = var.rds_allocated_storage
+  storage_type      = "gp3"
+  storage_encrypted = true
+
+  db_name  = var.project_name
+  username = var.rds_username
+  password = var.rds_password
+  port     = 5432
+
+  db_subnet_group_name   = module.vpc.database_subnet_group_name
+  vpc_security_group_ids = [aws_security_group.database.id]
+  publicly_accessible    = false
+
+  multi_az                = var.rds_multi_az
+  backup_retention_period = var.rds_backup_retention_period
+  skip_final_snapshot     = true
+  deletion_protection     = false
+
+  apply_immediately = true
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Service     = "rds-postgres"
+  }
+}
+
+# ElastiCache Redis (single node by default)
+resource "aws_elasticache_subnet_group" "redis" {
+  name       = "${var.project_name}-${var.environment}-redis-subnet-group"
+  subnet_ids = module.vpc.database_subnets
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Service     = "redis"
+  }
+}
+
+resource "aws_elasticache_replication_group" "redis" {
+  replication_group_id = "${var.project_name}-${var.environment}-redis"
+  description          = "Redis for ${var.project_name} ${var.environment}"
+
+  engine             = "redis"
+  engine_version     = var.redis_engine_version
+  node_type          = var.redis_node_type
+  num_cache_clusters = var.redis_num_cache_nodes
+  port               = 6379
+
+  subnet_group_name  = aws_elasticache_subnet_group.redis.name
+  security_group_ids = [aws_security_group.database.id]
+
+  automatic_failover_enabled = var.redis_automatic_failover_enabled
+
+  apply_immediately          = true
+  auto_minor_version_upgrade = true
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Service     = "redis"
+  }
+}
+
+# DocumentDB (single instance by default)
+resource "aws_docdb_subnet_group" "main" {
+  name       = "${var.project_name}-${var.environment}-docdb-subnet-group"
+  subnet_ids = module.vpc.database_subnets
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Service     = "docdb"
+  }
+}
+
+resource "aws_docdb_cluster" "main" {
+  cluster_identifier     = "${var.project_name}-${var.environment}-docdb"
+  engine                 = "docdb"
+  engine_version         = var.docdb_engine_version
+  master_username        = var.docdb_master_username
+  master_password        = var.docdb_master_password
+  port                   = 27017
+  db_subnet_group_name   = aws_docdb_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.database.id]
+
+  storage_encrypted   = true
+  deletion_protection = false
+
+  backup_retention_period = var.docdb_backup_retention_period
+  skip_final_snapshot     = true
+  apply_immediately       = true
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Service     = "docdb"
+  }
+}
+
+resource "aws_docdb_cluster_instance" "main" {
+  count              = var.docdb_num_instances
+  identifier         = "${var.project_name}-${var.environment}-docdb-${count.index + 1}"
+  cluster_identifier = aws_docdb_cluster.main.id
+  instance_class     = var.docdb_instance_class
+
+  auto_minor_version_upgrade = true
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    Service     = "docdb"
+  }
+}

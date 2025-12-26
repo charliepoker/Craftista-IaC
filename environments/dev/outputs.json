@@ -1,0 +1,126 @@
+{
+  "cluster_certificate_authority_data": {
+    "sensitive": false,
+    "type": "string",
+    "value": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJY1pWNEVlaTBITkF3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TlRFeU1qVXdNakkxTlRCYUZ3MHpOVEV5TWpNd01qTXdOVEJhTUJVeApFekFSQmdOVkJBTVRDbXQxWW1WeWJtVjBaWE13Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLCkFvSUJBUUMvRVloSjVLdFk1ZzZBblVDaGZPRjN6bGlacDRZMTR2YVR1bktSS3UzMXUwUndoVlc4SXdMVlIydzYKTWkwNE1rOW1JZHRIQVBiNFB2cG90bExLc1JOVUVwb24rUnQzOEtJZVpzUzl0QjVqcTl1U2RQVzgxbzJYUXNZQgpQMXIvTU0yZVprMDJYV1VIUUJtQnBFYmtVc1JFYjUrRDRLNnBJN2lTUVhVRjNacFJTWklxNy9Ga0IwakhxUWExCjlaaGlLdU1zVi9UZm9kQ2J6aWtNVUVacENRWnJIb0JaL2V3dzFWU2JrTWdOZk93TStuaUQxRDlCSDFPT3NublYKMTBiSU9GZU9vNXlJdDVvY09sTWVuSWZDTVNvWmFseEcvdERDZTFCSjZzKzRnUm9XMGp2eGg4WGgva1FLOWQzUAp4K3NHMzliWHU4Vko1RXdQMkhxZnZjSGp3YlpqQWdNQkFBR2pXVEJYTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQCkJnTlZIUk1CQWY4RUJUQURBUUgvTUIwR0ExVWREZ1FXQkJUMmpVWFNRbFBqcXgwbWtmYUN5a29SemdqdlNUQVYKQmdOVkhSRUVEakFNZ2dwcmRXSmxjbTVsZEdWek1BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQ0RYUU1tdmY2SAp0SUs0ZzNpc2J3ZmdiUHpBWTdneW1CeE9MWUhiQWttSDhpeFYyZnpNYlVhcGluV2NDdzJjMVRnMWl0M1NQczl0CjVnemszY1lpY0RKOXBKRzRPb20ySkw0R2E1QXJDY1hlRy9yWDZLOUI5VWZjUnJQdXdhNWh1M0R4VmdpdGVmbjYKTEJyenVwOVEwQVhqdU4xUUVDcGkyRVF0V2UyS3l1WWJwMlZLajlGZUVXbmhwbjM4N09tNFhrUVNPcE9WVHB0MwoyOGRuYmtqWXdlbUhzS1BEY1pldlA3QzBpZkFpOFN6c2F6TVdDL2txdWlUcnhNWmRna1dDSGczWTBXdW9wVjVTClgxVmtjekVYdUl5c3pEamIxelp0N2FmTUJ5UWV6WVU2WUFwMjQwWWpYcjNHRkh1NUc5dzVYM0cyaGVWbzdTVVYKL1RqQmpudEVGZk10Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
+  },
+  "cluster_endpoint": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://7D73B345E9AD2167FFB6605CD6846A19.gr7.us-east-1.eks.amazonaws.com"
+  },
+  "cluster_iam_role_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "craftista-dev-cluster-20251225022439410600000002"
+  },
+  "cluster_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "craftista-dev"
+  },
+  "cluster_security_group_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "sg-0b552114279e537d2"
+  },
+  "database_subnets": {
+    "sensitive": false,
+    "type": [
+      "tuple",
+      [
+        "string",
+        "string"
+      ]
+    ],
+    "value": [
+      "subnet-0f9109b6487661e35",
+      "subnet-06aadab55f412b53c"
+    ]
+  },
+  "devops_alb_dns_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "craftista-dev-devops-alb-641389560.us-east-1.elb.amazonaws.com"
+  },
+  "devops_tools_access": {
+    "sensitive": false,
+    "type": [
+      "object",
+      {
+        "alb_dns_name": "string",
+        "nexus_docker_internal": "string",
+        "nexus_internal": "string",
+        "nexus_url": "string",
+        "sonarqube_internal": "string",
+        "sonarqube_url": "string"
+      }
+    ],
+    "value": {
+      "alb_dns_name": "craftista-dev-devops-alb-641389560.us-east-1.elb.amazonaws.com",
+      "nexus_docker_internal": "http://10.1.1.88:8082",
+      "nexus_internal": "http://10.1.1.88:8081",
+      "nexus_url": "http://craftista-dev-devops-alb-641389560.us-east-1.elb.amazonaws.com/nexus",
+      "sonarqube_internal": "http://10.1.1.153:9000",
+      "sonarqube_url": "http://craftista-dev-devops-alb-641389560.us-east-1.elb.amazonaws.com"
+    }
+  },
+  "nexus_instance_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "i-0c33796384d4fca71"
+  },
+  "nexus_private_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "10.1.1.88"
+  },
+  "private_subnets": {
+    "sensitive": false,
+    "type": [
+      "tuple",
+      [
+        "string",
+        "string"
+      ]
+    ],
+    "value": [
+      "subnet-0d1dc04fbef5b98fd",
+      "subnet-02435ec0f3be74c46"
+    ]
+  },
+  "public_subnets": {
+    "sensitive": false,
+    "type": [
+      "tuple",
+      [
+        "string",
+        "string"
+      ]
+    ],
+    "value": [
+      "subnet-0d31ab41bca926b3f",
+      "subnet-0a209cb818cce2915"
+    ]
+  },
+  "sonarqube_instance_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "i-0f97657666a67cb5a"
+  },
+  "sonarqube_private_ip": {
+    "sensitive": false,
+    "type": "string",
+    "value": "10.1.1.153"
+  },
+  "vpc_cidr_block": {
+    "sensitive": false,
+    "type": "string",
+    "value": "10.1.0.0/16"
+  },
+  "vpc_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "vpc-07864169db6791e49"
+  }
+}
