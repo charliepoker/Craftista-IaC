@@ -15,6 +15,8 @@ This repository contains the complete infrastructure as code (IaC) for deploying
 - [Repository Structure](#repository-structure)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+  - [Step 1-6: Infrastructure Deployment](#step-1-bootstrap-infrastructure)
+  - [Step 7-10: GitOps & Secrets Setup](#-post-deployment-gitops--secrets-setup)
 - [Environment Configurations](#environment-configurations)
 - [Security Features](#security-features)
 - [Cost Management](#cost-management)
@@ -36,15 +38,24 @@ This infrastructure repository provides:
 - **SSM Session Manager**: Secure, keyless access to EC2 nodes
 - **Remote State Management**: S3 backend with DynamoDB state locking
 - **Infrastructure as Code**: 100% Terraform with modular, reusable components
-- **GitOps Ready**: Designed for automated deployments via CI/CD pipelines
+- **GitOps Ready**: ArgoCD integration for continuous deployment from Git
+- **Secrets Management**: HashiCorp Vault with External Secrets Operator for secure secret handling
 
 ### Why This Architecture?
 
 - **Microservices-First**: Built specifically for the Craftista polyglot application
 - **Cloud-Native**: Leverages AWS managed services for reduced operational overhead
-- **Security-Focused**: Implements AWS security best practices including SSM, encryption, and least-privilege IAM
+- **Security-Focused**: Implements AWS security best practices including SSM, encryption, Vault, and least-privilege IAM
 - **Cost-Optimized**: Different resource sizing per environment with budget controls
 - **Production-Ready**: High availability, automated backups, and monitoring
+- **GitOps Native**: Full GitOps workflow with ArgoCD and declarative secret management
+
+### Deployment Flow
+
+```
+Infrastructure (Terraform) → GitOps Setup (ArgoCD) → Secrets (Vault + ESO) → Applications
+     This Repo              craftista-gitops repo    craftista-gitops repo   Auto-deployed
+```
 
 ---
 
@@ -374,14 +385,331 @@ kubectl get pods -A
 ### Step 8: Retrieve Database Credentials
 
 ```bash
-# Get sensitive outputs
+# Get sensitive outputs (save these for Vault setup)
 terraform output -raw rds_master_password
 terraform output -raw redis_auth_token
 terraform output -raw docdb_master_password
+terraform output -raw rds_endpoint
+terraform output -raw redis_endpoint
+terraform output -raw docdb_endpoint
 
 # Or all outputs as JSON
-terraform output -json
+terraform output -json > infrastructure-outputs.json
 ```
+
+---
+
+## 🔐 Post-Deployment: GitOps & Secrets Setup
+
+After infrastructure deployment, proceed with GitOps and secrets management configuration.
+
+### Step 9: Setup ArgoCD and Vault
+
+The Craftista application uses a GitOps approach with ArgoCD for continuous deployment and HashiCorp Vault with External Secrets Operator for secure secrets management.
+
+#### 9.1 Clone GitOps Repository
+
+```bash
+# Clone the GitOps repository
+git clone https://github.com/charliepoker/craftista-gitops.git
+cd craftista-gitops
+```
+
+#### 9.2 Install ArgoCD
+
+```bash
+# Create ArgoCD namespace
+kubectl create namespace argocd
+
+# Install ArgoCD
+kubectl apply -n argocd -f argocd/install/argocd-install.yaml
+
+# Apply custom configuration
+kubectl apply -n argocd -f argocd/install/argocd-cm.yaml
+kubectl apply -n argocd -f argocd/install/argocd-rbac-cm.yaml
+
+# Wait for ArgoCD to be ready
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+
+# Access ArgoCD UI (port forward)
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Get initial admin password
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d
+```
+
+#### 9.3 Install HashiCorp Vault
+
+```bash
+# Add HashiCorp Helm repository
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+
+# Install Vault
+helm install vault hashicorp/vault \
+  --namespace vault \
+  --create-namespace \
+  --set "server.ha.enabled=true" \
+  --set "server.ha.replicas=3" \
+  --set "server.ha.raft.enabled=true"
+
+# Wait for Vault pods
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vault \
+  -n vault --timeout=300s
+```
+
+#### 9.4 Initialize and Unseal Vault
+
+```bash
+# Initialize Vault (run once only)
+kubectl exec vault-0 -n vault -- vault operator init \
+  -key-shares=5 \
+  -key-threshold=3 \
+  -format=json > vault-init-keys.json
+
+# IMPORTANT: Backup vault-init-keys.json securely and DO NOT commit to Git
+
+# Unseal Vault on each pod
+UNSEAL_KEY_1=$(cat vault-init-keys.json | jq -r '.unseal_keys_b64[0]')
+UNSEAL_KEY_2=$(cat vault-init-keys.json | jq -r '.unseal_keys_b64[1]')
+UNSEAL_KEY_3=$(cat vault-init-keys.json | jq -r '.unseal_keys_b64[2]')
+
+# Unseal vault-0
+kubectl exec vault-0 -n vault -- vault operator unseal $UNSEAL_KEY_1
+kubectl exec vault-0 -n vault -- vault operator unseal $UNSEAL_KEY_2
+kubectl exec vault-0 -n vault -- vault operator unseal $UNSEAL_KEY_3
+
+# Repeat for vault-1 and vault-2 if using HA setup
+kubectl exec vault-1 -n vault -- vault operator unseal $UNSEAL_KEY_1
+kubectl exec vault-1 -n vault -- vault operator unseal $UNSEAL_KEY_2
+kubectl exec vault-1 -n vault -- vault operator unseal $UNSEAL_KEY_3
+
+kubectl exec vault-2 -n vault -- vault operator unseal $UNSEAL_KEY_1
+kubectl exec vault-2 -n vault -- vault operator unseal $UNSEAL_KEY_2
+kubectl exec vault-2 -n vault -- vault operator unseal $UNSEAL_KEY_3
+```
+
+#### 9.5 Configure Vault Authentication and Policies
+
+```bash
+# Set Vault environment variables
+export VAULT_TOKEN=$(cat vault-init-keys.json | jq -r '.root_token')
+export VAULT_ADDR="http://localhost:8200"
+
+# Port forward to Vault
+kubectl port-forward -n vault vault-0 8200:8200 &
+
+# Make auth scripts executable
+chmod +x vault/auth/kubernetes-auth.sh
+chmod +x vault/auth/github-oidc-auth.sh
+
+# Configure Kubernetes authentication
+./vault/auth/kubernetes-auth.sh
+
+# Apply Vault policies for each service
+kubectl exec vault-0 -n vault -- sh -c "cat > /tmp/frontend-policy.hcl" < vault/policies/frontend-policy.hcl
+kubectl exec vault-0 -n vault -- vault policy write frontend-policy /tmp/frontend-policy.hcl
+
+kubectl exec vault-0 -n vault -- sh -c "cat > /tmp/catalogue-policy.hcl" < vault/policies/catalogue-policy.hcl
+kubectl exec vault-0 -n vault -- vault policy write catalogue-policy /tmp/catalogue-policy.hcl
+
+kubectl exec vault-0 -n vault -- sh -c "cat > /tmp/voting-policy.hcl" < vault/policies/voting-policy.hcl
+kubectl exec vault-0 -n vault -- vault policy write voting-policy /tmp/voting-policy.hcl
+
+kubectl exec vault-0 -n vault -- sh -c "cat > /tmp/recommendation-policy.hcl" < vault/policies/recommendation-policy.hcl
+kubectl exec vault-0 -n vault -- vault policy write recommendation-policy /tmp/recommendation-policy.hcl
+
+# Optional: Configure GitHub Actions OIDC for CI/CD
+export GITHUB_ORG="charliepoker"
+export GITHUB_REPO="craftista"
+./vault/auth/github-oidc-auth.sh
+```
+
+#### 9.6 Populate Vault with Secrets
+
+```bash
+# Make sync script executable
+chmod +x scripts/sync-secrets.sh
+
+# Set required environment variables from Terraform outputs
+export MONGODB_URI="mongodb://craftista_admin:$(cd ../Craftista-IaC/environments/{env} && terraform output -raw docdb_master_password)@$(cd ../Craftista-IaC/environments/{env} && terraform output -raw docdb_endpoint):27017/catalogue?ssl=true&replicaSet=rs0&readPreference=secondaryPreferred"
+
+export POSTGRES_URI="postgresql://craftista_admin:$(cd ../Craftista-IaC/environments/{env} && terraform output -raw rds_master_password)@$(cd ../Craftista-IaC/environments/{env} && terraform output -raw rds_endpoint):5432/voting"
+
+export REDIS_URI="redis://:$(cd ../Craftista-IaC/environments/{env} && terraform output -raw redis_auth_token)@$(cd ../Craftista-IaC/environments/{env} && terraform output -raw redis_endpoint):6379"
+
+# Set DockerHub credentials for image pull
+export DOCKERHUB_USERNAME="your-dockerhub-username"
+export DOCKERHUB_PASSWORD="your-dockerhub-password"
+
+# Run secrets sync script for your environment (dev, staging, or prod)
+./scripts/sync-secrets.sh --environment dev
+
+# For production, use:
+# ./scripts/sync-secrets.sh --environment prod
+```
+
+#### 9.7 Install External Secrets Operator
+
+```bash
+# Add External Secrets Helm repository
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+
+# Install External Secrets Operator
+helm install external-secrets external-secrets/external-secrets \
+  --namespace external-secrets-system \
+  --create-namespace \
+  --set installCRDs=true
+
+# Wait for operator to be ready
+kubectl wait --for=condition=available --timeout=300s \
+  deployment/external-secrets -n external-secrets-system
+```
+
+#### 9.8 Deploy External Secrets Configuration
+
+```bash
+# Create namespaces for each environment
+kubectl create namespace craftista-dev
+kubectl create namespace craftista-staging
+kubectl create namespace craftista-prod
+
+# Deploy service accounts for External Secrets
+kubectl apply -f external-secrets/overlays/dev/serviceaccount.yaml
+kubectl apply -f external-secrets/overlays/staging/serviceaccount.yaml
+kubectl apply -f external-secrets/overlays/prod/serviceaccount.yaml
+
+# Deploy SecretStores (connects ESO to Vault)
+kubectl apply -f external-secrets/cluster-secret-store.yaml
+kubectl apply -f external-secrets/overlays/dev/secret-store.yaml
+kubectl apply -f external-secrets/overlays/staging/secret-store.yaml
+kubectl apply -f external-secrets/overlays/prod/secret-store.yaml
+
+# Deploy ExternalSecrets (syncs secrets from Vault to K8s Secrets)
+kubectl apply -f external-secrets/overlays/dev/
+kubectl apply -f external-secrets/overlays/staging/
+kubectl apply -f external-secrets/overlays/prod/
+
+# Verify ExternalSecrets are syncing
+kubectl get externalsecrets -A
+kubectl get secrets -n craftista-dev
+```
+
+#### 9.9 Deploy ArgoCD Applications
+
+```bash
+# Create ArgoCD projects
+kubectl apply -f argocd/projects/craftista-dev.yaml
+kubectl apply -f argocd/projects/craftista-staging.yaml
+kubectl apply -f argocd/projects/craftista-prod.yaml
+
+# Deploy applications for your environment (example: dev)
+kubectl apply -f argocd/applications/dev/frontend-app.yaml
+kubectl apply -f argocd/applications/dev/catalogue-app.yaml
+kubectl apply -f argocd/applications/dev/voting-app.yaml
+kubectl apply -f argocd/applications/dev/recommendation-app.yaml
+
+# For production:
+# kubectl apply -f argocd/applications/prod/
+
+# Verify applications in ArgoCD
+kubectl get applications -n argocd
+
+# Check application sync status
+argocd app list
+argocd app get craftista-frontend-dev
+```
+
+#### 9.10 Verify Deployment
+
+```bash
+# Check all pods are running
+kubectl get pods -n craftista-dev
+
+# Verify secrets are created from Vault
+kubectl get secrets -n craftista-dev
+
+# Check ExternalSecret sync status
+kubectl describe externalsecret frontend-secrets -n craftista-dev
+
+# View application logs
+kubectl logs -l app=frontend -n craftista-dev
+
+# Access the application
+kubectl get svc -n craftista-dev
+kubectl port-forward svc/frontend -n craftista-dev 3000:3000
+```
+
+### Architecture: GitOps & Secrets Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     AWS EKS Cluster                         │
+│                                                              │
+│  ┌────────────┐    ┌──────────────┐    ┌────────────────┐ │
+│  │  ArgoCD    │───>│  Kubernetes  │<───│  External      │ │
+│  │            │    │  Deployments │    │  Secrets       │ │
+│  │  Syncs     │    │              │    │  Operator      │ │
+│  │  from Git  │    │  - Frontend  │    │                │ │
+│  │            │    │  - Catalogue │    │  Syncs secrets │ │
+│  └────────────┘    │  - Voting    │    │  from Vault    │ │
+│         │          │  - Recommend │    └────────┬───────┘ │
+│         │          └──────────────┘              │          │
+│         │                                        │          │
+│         ▼                                        ▼          │
+│  ┌────────────────────────────────────────────────────────┐│
+│  │            GitHub: craftista-gitops                    ││
+│  │  • Kubernetes manifests                               ││
+│  │  • ArgoCD applications                                ││
+│  │  • External Secrets definitions                       ││
+│  └────────────────────────────────────────────────────────┘│
+│                                                              │
+│  ┌────────────┐                                             │
+│  │  Vault     │<────────────────────────────────────────────┤
+│  │            │  External Secrets fetches secrets           │
+│  │  Stores:   │  Apps consume via K8s Secrets               │
+│  │  • DB URIs │                                             │
+│  │  • API Keys│                                             │
+│  │  • Tokens  │                                             │
+│  └────────────┘                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Secret Management Strategy
+
+The deployment uses **HashiCorp Vault** as the single source of truth for all secrets, with **External Secrets Operator** automatically syncing them to Kubernetes Secrets.
+
+**Secrets stored in Vault:**
+
+- Database connection strings (PostgreSQL, MongoDB, Redis)
+- API keys and JWT secrets
+- DockerHub credentials for image pulls
+- Service-specific configuration
+
+**Benefits:**
+
+- ✅ Centralized secret management
+- ✅ Automatic secret rotation support
+- ✅ Audit logging of secret access
+- ✅ Fine-grained access control per service
+- ✅ Secrets never stored in Git
+- ✅ Environment isolation (dev/staging/prod)
+
+**Service Account Strategy:**
+Each microservice has its own Kubernetes ServiceAccount that:
+
+1. Authenticates to Vault via Kubernetes auth method
+2. Has access only to its specific secrets via Vault policies
+3. Secrets are automatically injected as Kubernetes Secrets
+4. Applications consume secrets as environment variables
+
+For detailed secrets management documentation, see the [craftista-gitops repository](https://github.com/charliepoker/craftista-gitops):
+
+- `vault/README.md` - Vault integration guide
+- `external-secrets/README.md` - External Secrets configuration
+- `argocd/docs/deployment-guide.md` - Complete deployment guide
 
 ---
 
@@ -488,558 +816,4 @@ terraform output -json
 | Container Insights    | ❌           | ❌           | ✅           |
 | Enhanced Monitoring   | ❌           | ✅           | ✅           |
 | Automated Backups     | ❌           | ✅           | ✅           |
-| **Cost**              |              |              |              |
-| Monthly Budget        | $5           | $50          | $200         |
-| Estimated Actual      | $130-150     | $200-250     | $400-500     |
-
----
-
-## 🔒 Security Features
-
-### Network Security
-
-1. **VPC Isolation**: Each environment has its own isolated VPC
-2. **Private Subnets**: EKS nodes run in private subnets with no direct internet access
-3. **Security Groups**: Least-privilege firewall rules
-4. **NACL**: Default network ACLs for additional protection
-
-### Access Control
-
-1. **SSM Session Manager**:
-
-   - Keyless access to EC2 nodes
-   - All sessions logged to CloudWatch
-   - No need to open SSH port 22
-   - IAM-based authentication
-
-2. **IAM Roles for Service Accounts (IRSA)**:
-
-   - Fine-grained pod-level permissions
-   - No long-lived credentials
-   - AWS service integration without keys
-
-3. **EKS API Security**:
-   - Endpoint access controlled by security groups
-   - Current user IP automatically whitelisted
-   - Private endpoint available
-
-### Data Protection
-
-1. **Encryption at Rest**:
-
-   - EKS cluster encryption with KMS
-   - RDS storage encryption enabled
-   - S3 state bucket encrypted (AES256)
-
-2. **Encryption in Transit**:
-
-   - TLS/SSL for all service communication
-   - VPC endpoints for private AWS service access
-
-3. **Secret Management**:
-   - Terraform random passwords for databases
-   - Sensitive outputs marked as sensitive
-   - State file encrypted in S3
-
-### Compliance
-
-1. **Audit Logging**:
-
-   - EKS control plane logs to CloudWatch
-   - VPC Flow Logs (Staging/Prod)
-   - RDS enhanced monitoring
-
-2. **Backup & Recovery**:
-   - Automated RDS snapshots
-   - Redis snapshot retention
-   - DocumentDB automated backups
-
----
-
-## 💰 Cost Management
-
-### Budget Controls
-
-Each environment has AWS Budget configured with email alerts:
-
-```hcl
-# Alert thresholds
-- 80% of budget: Warning
-- 100% of budget: Alert
-- 120% of budget: Critical
-```
-
-**Budget Allocations**:
-
-- Dev: $5/month
-- Staging: $50/month
-- Production: $200/month
-
-### Cost Optimization Strategies
-
-#### Development
-
-- Single availability zone NAT Gateway
-- SPOT instances for EKS nodes
-- Smallest database instance sizes
-- No Container Insights
-- Minimal backup retention
-
-#### Staging
-
-- Shared resources where possible
-- SPOT instances for cost savings
-- Moderate backup retention
-- Enhanced monitoring for production simulation
-
-#### Production
-
-- ON_DEMAND instances for reliability
-- Multi-AZ for high availability
-- Right-sized instances
-- Automated scaling policies
-- Long-term backup retention
-
-### Monthly Cost Breakdown
-
-#### Development (~$130-150)
-
-```
-EKS Control Plane:        $73
-EC2 Nodes (t3.small):     $8
-NAT Gateway:              $32
-RDS (db.t4g.micro):       $13
-Redis (micro):            $12
-DocumentDB (medium):      $55
-VPC Endpoints:            $22
-Misc (logs, transfer):    $7
-──────────────────────────────
-TOTAL:                    ~$130
-```
-
-#### Staging (~$200-250)
-
-```
-EKS Control Plane:        $73
-EC2 Nodes (2x t3.medium): $30
-NAT Gateway:              $32
-RDS (db.t4g.small):       $26
-Redis (micro):            $12
-DocumentDB (medium):      $55
-VPC Endpoints:            $22
-Flow Logs:                $15
-Misc:                     $15
-──────────────────────────────
-TOTAL:                    ~$230
-```
-
-#### Production (~$400-500)
-
-```
-EKS Control Plane:        $73
-EC2 Nodes (2x t3.medium):  $30
-NAT Gateway (3 AZs):      $96
-RDS Multi-AZ (small):     $52
-Redis Multi-AZ:           $48
-DocumentDB (2 instances): $110
-VPC Endpoints:            $22
-Flow Logs:                $20
-Container Insights:       $25
-Backups & Monitoring:     $30
-Misc:                     $20
-──────────────────────────────
-TOTAL:                    ~$450
-```
-
-### Cost Reduction Tips
-
-1. **Use SPOT instances** where appropriate (non-prod)
-2. **Scheduled scaling**: Scale down during off-hours
-3. **Reserved instances**: For predictable production workloads
-4. **S3 lifecycle policies**: Archive old Terraform state versions
-5. **CloudWatch log retention**: Set appropriate retention periods
-6. **Remove unused resources**: Regular cleanup of test resources
-
----
-
-## 🔄 GitOps Workflow
-
-This infrastructure is designed for GitOps practices:
-
-### Recommended Workflow
-
-```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Feature   │      │    Pull     │      │   Merge to  │
-│   Branch    │─────>│   Request   │─────>│    Main     │
-└─────────────┘      └─────────────┘      └─────────────┘
-       │                    │                     │
-       │                    │                     │
-       ▼                    ▼                     ▼
-  Manual Test      Terraform Plan      Terraform Apply
-   (terraform       (automated in        (automated in
-    plan)                CI)                  CD)
-```
-
-### Git Branch Strategy
-
-- **`main`**: Production-ready code
-- **`develop`**: Integration branch for features
-- **`feature/*`**: Individual feature branches
-- **`hotfix/*`**: Emergency production fixes
-
-### CI/CD Integration
-
-#### Recommended Pipeline (GitHub Actions Example)
-
-```yaml
-name: Terraform Infrastructure
-
-on:
-  pull_request:
-    paths:
-      - "terraform/**"
-  push:
-    branches:
-      - main
-    paths:
-      - "terraform/**"
-
-jobs:
-  terraform:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.0
-
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: terraform/environments/${{ matrix.env }}
-
-      - name: Terraform Validate
-        run: terraform validate
-        working-directory: terraform/environments/${{ matrix.env }}
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-        working-directory: terraform/environments/${{ matrix.env }}
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Terraform Apply (on main branch)
-        if: github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve tfplan
-        working-directory: terraform/environments/${{ matrix.env }}
-
-    strategy:
-      matrix:
-        env: [dev, staging, prod]
-```
-
-### State Management
-
-- **Backend**: S3 + DynamoDB
-- **State Locking**: Prevents concurrent modifications
-- **State Versioning**: S3 versioning enabled for rollback
-- **Encryption**: State files encrypted at rest
-
-### Best Practices
-
-1. **Never commit** `terraform.tfvars` with sensitive data
-2. **Always review** `terraform plan` output before applying
-3. **Use pull requests** for all infrastructure changes
-4. **Tag releases** for production deployments
-5. **Document changes** in commit messages
-6. **Test in dev first**, then promote to staging/prod
-7. **Use semantic versioning** for infrastructure releases
-
----
-
-## 🧪 Testing & Validation
-
-### Pre-Deployment Checks
-
-```bash
-# Format check
-terraform fmt -check -recursive
-
-# Validate configuration
-terraform validate
-
-# Security scanning (optional)
-tfsec .
-
-# Cost estimation (optional)
-infracost breakdown --path .
-```
-
-### Post-Deployment Validation
-
-```bash
-# Verify EKS cluster
-aws eks describe-cluster --name craftista-{env}-eks
-
-# Check node status
-kubectl get nodes
-
-# Verify databases
-aws rds describe-db-instances --db-instance-identifier craftista-{env}-postgres
-aws elasticache describe-replication-groups --replication-group-id craftista-{env}-redis
-
-# Test SSM access
-aws ssm start-session --target <instance-id>
-
-# Check VPC configuration
-aws ec2 describe-vpcs --filters "Name=tag:Environment,Values={env}"
-```
-
----
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-#### 1. Backend Configuration Errors
-
-**Problem**: `Error initializing backend: NoSuchBucket`
-
-**Solution**:
-
-```bash
-cd terraform/bootstrap
-terraform apply  # Create the state bucket first
-```
-
-#### 2. State Lock Conflicts
-
-**Problem**: `Error acquiring the state lock`
-
-**Solution**:
-
-```bash
-# List locks
-aws dynamodb scan --table-name craftista-infra-state-locks
-
-# Force unlock (use with caution)
-terraform force-unlock <lock-id>
-```
-
-#### 3. EKS Cluster Timeout
-
-**Problem**: Cluster creation exceeds timeout
-
-**Solution**:
-
-- Check VPC and subnet configurations
-- Verify IAM roles and policies
-- Review CloudFormation stack events in AWS Console
-
-#### 4. Database Connection Failures
-
-**Problem**: Cannot connect to RDS/Redis/DocumentDB
-
-**Solution**:
-
-```bash
-# Check security groups
-terraform output database_security_group_id
-
-# Verify subnets
-terraform output database_subnets
-
-# Test from EKS pod
-kubectl run -it --rm debug --image=alpine --restart=Never -- sh
-apk add postgresql-client
-psql -h <rds_endpoint> -U craftista_admin -d craftista
-```
-
-#### 5. Node Registration Issues
-
-**Problem**: EKS nodes not joining cluster
-
-**Solution**:
-
-- Verify IAM role has required policies
-- Check node security group rules
-- Review node group launch template
-- Check EKS cluster security group
-
-### Getting Help
-
-1. **Check logs**:
-
-   ```bash
-   # EKS control plane logs
-   aws logs tail /aws/eks/craftista-{env}-eks/cluster --follow
-
-   # Node logs via SSM
-   aws ssm start-session --target <instance-id>
-   sudo journalctl -u kubelet -f
-   ```
-
-2. **Terraform debug mode**:
-
-   ```bash
-   TF_LOG=DEBUG terraform apply
-   ```
-
-3. **AWS Support**: For infrastructure issues
-4. **GitHub Issues**: Report bugs in this repository
-
----
-
-## 📚 Additional Resources
-
-### Documentation
-
-- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
-- [AWS EKS Best Practices](https://aws.github.io/aws-eks-best-practices/)
-- [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [SSM Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)
-
-### Related Repositories
-
-- **Application Code**: [github.com/charliepoker/craftista](https://github.com/charliepoker/craftista)
-- **Kubernetes Manifests**: (Link to your K8s manifests repo)
-- **Helm Charts**: (Link to your Helm charts repo if applicable)
-
-### Terraform Modules Used
-
-- [terraform-aws-modules/vpc](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/latest)
-- [terraform-aws-modules/eks](https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest)
-- [terraform-aws-modules/kms](https://registry.terraform.io/modules/terraform-aws-modules/kms/aws/latest)
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-### Contribution Workflow
-
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/my-new-feature`
-3. **Make your changes** with clear commit messages
-4. **Test your changes**: Run `terraform plan` in all environments
-5. **Submit a pull request** with detailed description
-
-### Code Standards
-
-- Use consistent formatting: `terraform fmt`
-- Add comments for complex logic
-- Update documentation for new features
-- Follow AWS and Terraform best practices
-- Include variable descriptions and validation
-
-### Pull Request Template
-
-```markdown
-## Description
-
-Brief description of changes
-
-## Type of Change
-
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
-
-## Environments Tested
-
-- [ ] Dev
-- [ ] Staging
-- [ ] Prod
-
-## Checklist
-
-- [ ] Code follows style guidelines
-- [ ] Self-review completed
-- [ ] Comments added for complex areas
-- [ ] Documentation updated
-- [ ] No new warnings generated
-- [ ] Terraform plan succeeds
-```
-
----
-
-## 📄 License
-
-This infrastructure code is licensed under the **Apache License 2.0**.
-
-```
-Copyright 2025 Craftista Infrastructure Team
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
----
-
-## 🙏 Acknowledgments
-
-- **School of DevOps**: For the Craftista application
-- **HashiCorp**: For Terraform
-- **AWS**: For cloud infrastructure
-- **Terraform AWS Modules**: For reusable module components
-- **Community Contributors**: For feedback and improvements
-
----
-
-## 📞 Support
-
-- **Email**: iheanachocharlie@example.com
-- **GitHub Issues**: [Create an issue](https://github.com/charliepoker/craftista-infrastructure/issues)
-- **Documentation**: See environment-specific READMEs in each directory
-
----
-
-## 🗺️ Roadmap
-
-### Planned Features
-
-- [ ] ArgoCD integration for GitOps
-- [ ] Terraform Cloud/Enterprise workspace configuration
-- [ ] Multi-region support
-- [ ] Disaster recovery automation
-- [ ] Cost optimization recommendations
-- [ ] Compliance scanning (CIS benchmarks)
-- [ ] Infrastructure drift detection
-- [ ] Automated testing with Terratest
-- [ ] Service mesh integration (Istio/Linkerd)
-- [ ] Observability stack (Prometheus, Grafana)
-
-### Version History
-
-- **v1.0.0** (2025-11-22): Initial release with Dev, Staging, Prod environments
-  - AWS EKS 1.30
-  - SSM Session Manager integration
-  - Multi-environment support
-  - Complete database layer
-
----
-
-<div align="center">
-
-**Built with ❤️ for the DevOps Community**
-
-[⬆ Back to Top](#craftista-infrastructure-as-code-iac)
-
-</div>
+| 

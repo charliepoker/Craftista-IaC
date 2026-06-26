@@ -1504,7 +1504,7 @@ resource "aws_db_instance" "postgres" {
 
   # Security and maintenance
   auto_minor_version_upgrade = true
-  deletion_protection        = true
+  deletion_protection        = false
   apply_immediately          = false
 
   tags = merge(local.common_tags, {
